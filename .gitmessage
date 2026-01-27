@@ -1,0 +1,42 @@
+# <type>(<scope>): <subject>
+#
+# <body>
+#
+# <footer>
+
+# Type 类型说明:
+# feat: 新功能
+# fix: Bug 修复
+# docs: 文档更新
+# style: 代码格式(不影响代码运行的变动)
+# refactor: 重构(既不是增加feature，也不是修复bug)
+# perf: 性能优化
+# test: 增加测试
+# chore: 构建过程或辅助工具的变动
+# revert: 撤销
+# build: 构建系统或外部依赖项的更改
+# ci: CI配置文件和脚本的更改
+
+# Scope 作用域 (可选):
+# 指定此次更改的范围，如 auth, dashboard, components 等
+
+# Subject 简短描述:
+# 用一句话清楚的描述此次提交的主要内容
+# 不超过50个字符，首字母小写，不使用句号结尾
+
+# Body 详细描述 (可选):
+# 详细的解释此次更改的内容和原因
+# 可以分为多行，每行不超过72个字符
+
+# Footer 页脚 (可选):
+# 备注信息，通常是 BREAKING CHANGE 或修复的 bug 的链接
+
+# 示例:
+# feat(auth): 添加用户登录功能
+#
+# 新增用户登录页面和相关的认证逻辑
+# - 添加登录表单组件
+# - 集成JWT认证
+# - 添加登录状态管理
+#
+# Closes #123 
