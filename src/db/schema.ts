@@ -46,6 +46,8 @@ export const memoryFavorites = memorybookSchema.memoryFavorites;
 
 // 提醒相关
 export const memoryReminders = memorybookSchema.memoryReminders;
+export const healthRecords = memorybookSchema.healthRecords;
+export const healthGuides = memorybookSchema.healthGuides;
 
 // MemoryBook 关系
 export const memoriesRelations = memorybookSchema.memoriesRelations;
@@ -63,3 +65,4 @@ export const memoryFavoritesRelations =
   memorybookSchema.memoryFavoritesRelations;
 export const memoryRemindersRelations =
   memorybookSchema.memoryRemindersRelations;
+export const healthRecordsRelations = memorybookSchema.healthRecordsRelations;
