@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(memories.userId, parseInt(userId)));
     }
     if (keyword) {
-      conditions.push(like(memories.title, `%${keyword}%`));
+      // 增强模糊搜索 - 同时搜索标题和内容
+      conditions.push(
+        sql`(${memories.title} ILIKE ${'%' + keyword + '%'} OR ${memories.content} ILIKE ${'%' + keyword + '%'} OR ${memories.location} ILIKE ${'%' + keyword + '%'})`
+      );
     }
 
     // 查询记忆列表

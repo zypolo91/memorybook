@@ -9,7 +9,9 @@ const dialect = getDatabaseDialect();
 
 const kitDialect = dialect === 'postgres' ? 'postgresql' : 'mysql';
 const schema =
-  dialect === 'postgres' ? './src/db/schema.pg.ts' : './src/db/schema.mysql.ts';
+  dialect === 'postgres'
+    ? ['./src/db/schema.pg.ts', './src/db/schema.memorybook.ts']
+    : ['./src/db/schema.mysql.ts', './src/db/schema.memorybook.ts'];
 const out = dialect === 'postgres' ? './drizzle/pg' : './drizzle';
 
 const dbCredentials =

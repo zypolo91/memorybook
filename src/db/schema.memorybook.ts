@@ -12,7 +12,8 @@ import {
   boolean,
   timestamp,
   jsonb,
-  index
+  index,
+  doublePrecision
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { users } from './schema.pg';
@@ -530,5 +531,270 @@ export const healthRecordsRelations = relations(healthRecords, ({ one }) => ({
   creator: one(users, {
     fields: [healthRecords.creatorId],
     references: [users.id]
+  })
+}));
+
+// ========================================
+// 病例档案相关表
+// ========================================
+
+/**
+ * 病例档案分类
+ */
+export const medicalCategories = pgTable('medical_categories', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 100 }).notNull(),
+  icon: varchar('icon', { length: 50 }),
+  color: varchar('color', { length: 20 }),
+  description: text('description'),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: timestamp('created_at').defaultNow()
+});
+
+/**
+ * 病例档案文件表
+ */
+export const medicalRecords = pgTable(
+  'medical_records',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    patientId: integer('patient_id').references(() => patients.id),
+    categoryId: integer('category_id').references(() => medicalCategories.id),
+    title: varchar('title', { length: 200 }).notNull(),
+    description: text('description'),
+    fileUrl: varchar('file_url', { length: 500 }),
+    thumbnailUrl: varchar('thumbnail_url', { length: 500 }),
+    fileType: varchar('file_type', { length: 50 }), // ct, report, prescription, paper, video, other
+    fileName: varchar('file_name', { length: 200 }),
+    fileSize: integer('file_size'),
+    mimeType: varchar('mime_type', { length: 100 }),
+    recordDate: timestamp('record_date'), // 检查/诊断日期
+    hospital: varchar('hospital', { length: 200 }), // 医院名称
+    doctor: varchar('doctor', { length: 100 }), // 医生姓名
+    department: varchar('department', { length: 100 }), // 科室
+    diagnosis: text('diagnosis'), // 诊断结果
+    notes: text('notes'), // 备注
+    aiAnalysis: jsonb('ai_analysis'), // AI分析结果
+    isImportant: boolean('is_important').default(false), // 是否重要
+    status: varchar('status', { length: 20 }).default('active'), // active, archived
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index('medical_records_user_id_idx').on(table.userId),
+    patientIdIdx: index('medical_records_patient_id_idx').on(table.patientId),
+    categoryIdIdx: index('medical_records_category_id_idx').on(
+      table.categoryId
+    ),
+    recordDateIdx: index('medical_records_record_date_idx').on(table.recordDate)
+  })
+);
+
+/**
+ * 病例档案标签
+ */
+export const medicalTags = pgTable('medical_tags', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 50 }).notNull().unique(),
+  color: varchar('color', { length: 20 }),
+  usageCount: integer('usage_count').default(0),
+  createdAt: timestamp('created_at').defaultNow()
+});
+
+/**
+ * 病例档案标签关联
+ */
+export const medicalRecordTags = pgTable(
+  'medical_record_tags',
+  {
+    id: serial('id').primaryKey(),
+    recordId: integer('record_id')
+      .notNull()
+      .references(() => medicalRecords.id, { onDelete: 'cascade' }),
+    tagId: integer('tag_id')
+      .notNull()
+      .references(() => medicalTags.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    recordIdIdx: index('medical_record_tags_record_id_idx').on(table.recordId),
+    tagIdIdx: index('medical_record_tags_tag_id_idx').on(table.tagId)
+  })
+);
+
+// 病例档案关系
+export const medicalRecordsRelations = relations(
+  medicalRecords,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [medicalRecords.userId],
+      references: [users.id]
+    }),
+    patient: one(patients, {
+      fields: [medicalRecords.patientId],
+      references: [patients.id]
+    }),
+    category: one(medicalCategories, {
+      fields: [medicalRecords.categoryId],
+      references: [medicalCategories.id]
+    }),
+    tags: many(medicalRecordTags)
+  })
+);
+
+export const medicalRecordTagsRelations = relations(
+  medicalRecordTags,
+  ({ one }) => ({
+    record: one(medicalRecords, {
+      fields: [medicalRecordTags.recordId],
+      references: [medicalRecords.id]
+    }),
+    tag: one(medicalTags, {
+      fields: [medicalRecordTags.tagId],
+      references: [medicalTags.id]
+    })
+  })
+);
+
+// ========================================
+// 位置监控相关表
+// ========================================
+
+/**
+ * 位置记录表 - 存储患者的实时位置
+ */
+export const locationRecords = pgTable(
+  'location_records',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    patientId: integer('patient_id').references(() => patients.id),
+    latitude: doublePrecision('latitude').notNull(),
+    longitude: doublePrecision('longitude').notNull(),
+    accuracy: doublePrecision('accuracy'), // 精度（米）
+    altitude: doublePrecision('altitude'), // 海拔
+    speed: doublePrecision('speed'), // 速度（米/秒）
+    heading: doublePrecision('heading'), // 方向（度）
+    address: varchar('address', { length: 500 }), // 地址
+    recordedAt: timestamp('recorded_at').notNull(), // 记录时间
+    deviceInfo: jsonb('device_info'), // 设备信息
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index('location_records_user_id_idx').on(table.userId),
+    patientIdIdx: index('location_records_patient_id_idx').on(table.patientId),
+    recordedAtIdx: index('location_records_recorded_at_idx').on(
+      table.recordedAt
+    )
+  })
+);
+
+/**
+ * 地理围栏表 - 设置安全区域
+ */
+export const geofences = pgTable(
+  'geofences',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    patientId: integer('patient_id').references(() => patients.id),
+    name: varchar('name', { length: 100 }).notNull(),
+    description: text('description'),
+    centerLat: doublePrecision('center_lat').notNull(),
+    centerLng: doublePrecision('center_lng').notNull(),
+    radius: doublePrecision('radius').notNull(), // 半径（米）
+    address: varchar('address', { length: 500 }),
+    isActive: boolean('is_active').default(true),
+    alertOnExit: boolean('alert_on_exit').default(true), // 离开时报警
+    alertOnEnter: boolean('alert_on_enter').default(false), // 进入时报警
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index('geofences_user_id_idx').on(table.userId),
+    patientIdIdx: index('geofences_patient_id_idx').on(table.patientId)
+  })
+);
+
+/**
+ * 围栏报警记录表
+ */
+export const geofenceAlerts = pgTable(
+  'geofence_alerts',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    geofenceId: integer('geofence_id')
+      .notNull()
+      .references(() => geofences.id),
+    patientId: integer('patient_id').references(() => patients.id),
+    alertType: varchar('alert_type', { length: 20 }).notNull(), // exit, enter
+    latitude: doublePrecision('latitude').notNull(),
+    longitude: doublePrecision('longitude').notNull(),
+    address: varchar('address', { length: 500 }),
+    isRead: boolean('is_read').default(false),
+    isHandled: boolean('is_handled').default(false),
+    handledAt: timestamp('handled_at'),
+    handledBy: integer('handled_by'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index('geofence_alerts_user_id_idx').on(table.userId),
+    geofenceIdIdx: index('geofence_alerts_geofence_id_idx').on(
+      table.geofenceId
+    ),
+    createdAtIdx: index('geofence_alerts_created_at_idx').on(table.createdAt)
+  })
+);
+
+// 位置监控关系
+export const locationRecordsRelations = relations(
+  locationRecords,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [locationRecords.userId],
+      references: [users.id]
+    }),
+    patient: one(patients, {
+      fields: [locationRecords.patientId],
+      references: [patients.id]
+    })
+  })
+);
+
+export const geofencesRelations = relations(geofences, ({ one, many }) => ({
+  user: one(users, {
+    fields: [geofences.userId],
+    references: [users.id]
+  }),
+  patient: one(patients, {
+    fields: [geofences.patientId],
+    references: [patients.id]
+  }),
+  alerts: many(geofenceAlerts)
+}));
+
+export const geofenceAlertsRelations = relations(geofenceAlerts, ({ one }) => ({
+  user: one(users, {
+    fields: [geofenceAlerts.userId],
+    references: [users.id]
+  }),
+  geofence: one(geofences, {
+    fields: [geofenceAlerts.geofenceId],
+    references: [geofences.id]
+  }),
+  patient: one(patients, {
+    fields: [geofenceAlerts.patientId],
+    references: [patients.id]
   })
 }));

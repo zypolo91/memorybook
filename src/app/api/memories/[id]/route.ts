@@ -11,16 +11,17 @@ import {
 import { eq, and, sql } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 
-interface RouteParams {
-  params: { id: string };
+interface RouteContext {
+  params: Promise<{ id: string }>;
 }
 
 /**
  * GET /api/memories/[id] - 获取记忆详情
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const memoryId = parseInt(params.id);
+    const { id } = await context.params;
+    const memoryId = parseInt(id);
 
     const [memory] = await db
       .select()
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 /**
  * PUT /api/memories/[id] - 更新记忆
  */
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -86,7 +87,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const memoryId = parseInt(params.id);
+    const { id } = await context.params;
+    const memoryId = parseInt(id);
     const body = await request.json();
 
     // 检查记忆是否存在且属于当前用户
@@ -182,7 +184,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/memories/[id] - 删除记忆
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const user = getCurrentUser(request);
     if (!user) {
@@ -192,7 +194,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const memoryId = parseInt(params.id);
+    const { id } = await context.params;
+    const memoryId = parseInt(id);
 
     // 检查记忆是否存在且属于当前用户
     const [existingMemory] = await db
