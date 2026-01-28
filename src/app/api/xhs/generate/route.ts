@@ -6,8 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 
-const AI_API_URL = 'https://aihubmix.com/v1/chat/completions';
+// aihubmix 配置（见 .env：AI_API_URL / AI_API_KEY / AI_MODEL）
+const AI_API_URL =
+  process.env.AI_API_URL || 'https://aihubmix.com/v1/chat/completions';
 const AI_API_KEY = process.env.AI_API_KEY;
+const AI_MODEL = process.env.AI_MODEL || 'coding-glm-4.7-free';
 
 const XHS_PROMPT = `你是一位专业的小红书内容创作者，擅长将生活故事转化为温暖感人的小红书文章。
 
@@ -57,7 +60,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, content, date, mood, location, tags } = body;
+    const {
+      title,
+      content,
+      date,
+      mood,
+      location,
+      tags,
+      style,
+      contentType,
+      length,
+      special
+    } = body;
 
     if (!title || !content) {
       return NextResponse.json(
@@ -66,13 +80,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 构建提示词
-    const prompt = XHS_PROMPT.replace('{title}', title || '')
+    // 构建提示词（支持前端样式选择）
+    const styleHint = style ? `\n【文案风格】${style}\n` : '';
+    const typeHint = contentType ? `\n【内容类型】${contentType}\n` : '';
+    const lengthHint = length ? `\n【字数范围】${length}\n` : '';
+    const specialHint = special ? `\n【特殊要求】${special}\n` : '';
+
+    const prompt = (
+      XHS_PROMPT +
+      styleHint +
+      typeHint +
+      lengthHint +
+      specialHint
+    )
+      .replace('{title}', title || '')
       .replace('{content}', content || '')
       .replace('{date}', date || '未知')
       .replace('{mood}', mood || '未知')
       .replace('{location}', location || '未知')
       .replace('{tags}', Array.isArray(tags) ? tags.join(', ') : '无');
+
+    if (!AI_API_KEY) {
+      return NextResponse.json(
+        { code: 500, message: 'AI 未配置：请在 .env 中设置 AI_API_KEY' },
+        { status: 500 }
+      );
+    }
 
     // 调用 AI API
     const response = await fetch(AI_API_URL, {
@@ -82,7 +115,7 @@ export async function POST(request: NextRequest) {
         Authorization: `Bearer ${AI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'glm-4-flash',
+        model: AI_MODEL,
         messages: [
           {
             role: 'user',
@@ -95,7 +128,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      throw new Error('AI API 调用失败');
+      const errText = await response.text().catch(() => '');
+      throw new Error(
+        `AI API 调用失败: ${response.status} ${response.statusText} ${errText}`
+      );
     }
 
     const aiResult = await response.json();
