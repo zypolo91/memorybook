@@ -44,6 +44,8 @@ export const patients = memorybookSchema.patients;
 export const memoryComments = memorybookSchema.memoryComments;
 export const memoryLikes = memorybookSchema.memoryLikes;
 export const memoryFavorites = memorybookSchema.memoryFavorites;
+export const notifications = memorybookSchema.notifications;
+export const locationPermissions = memorybookSchema.locationPermissions;
 
 // 提醒相关
 export const memoryReminders = memorybookSchema.memoryReminders;

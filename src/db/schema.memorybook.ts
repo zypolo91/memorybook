@@ -784,6 +784,60 @@ export const geofenceAlerts = pgTable(
   })
 );
 
+/**
+ * 位置共享权限表 - 控制谁可以查看位置
+ */
+export const locationPermissions = pgTable(
+  'location_permissions',
+  {
+    id: serial('id').primaryKey(),
+    ownerId: integer('owner_id')
+      .notNull()
+      .references(() => users.id), // 位置所有者（患者/被追踪者）
+    viewerId: integer('viewer_id')
+      .notNull()
+      .references(() => users.id), // 被授权查看者
+    circleId: integer('circle_id').references(() => familyCircles.id), // 所属家庭圈
+    canViewRealtime: boolean('can_view_realtime').default(true), // 可查看实时位置
+    canViewHistory: boolean('can_view_history').default(true), // 可查看历史轨迹
+    canReceiveAlerts: boolean('can_receive_alerts').default(true), // 可接收围栏报警
+    isActive: boolean('is_active').default(true),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow()
+  },
+  (table) => ({
+    ownerIdIdx: index('location_permissions_owner_id_idx').on(table.ownerId),
+    viewerIdIdx: index('location_permissions_viewer_id_idx').on(table.viewerId),
+    circleIdIdx: index('location_permissions_circle_id_idx').on(table.circleId)
+  })
+);
+
+/**
+ * 通知表 - 用于@提醒、点赞通知等
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    type: varchar('type', { length: 50 }).notNull(), // mention, like, comment, follow, system
+    title: varchar('title', { length: 200 }),
+    content: text('content'),
+    relatedId: integer('related_id'), // 关联的记忆ID、评论ID等
+    relatedType: varchar('related_type', { length: 50 }), // memory, comment, etc
+    fromUserId: integer('from_user_id').references(() => users.id),
+    isRead: boolean('is_read').default(false),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index('notifications_user_id_idx').on(table.userId),
+    isReadIdx: index('notifications_is_read_idx').on(table.isRead),
+    createdAtIdx: index('notifications_created_at_idx').on(table.createdAt)
+  })
+);
+
 // 位置监控关系
 export const locationRecordsRelations = relations(
   locationRecords,

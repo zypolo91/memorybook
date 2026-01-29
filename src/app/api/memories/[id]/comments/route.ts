@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { memoryComments, users } from '@/db/schema';
+import { memoryComments, users, notifications, memories } from '@/db/schema';
 import { eq, desc, isNull, and } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 
@@ -49,7 +49,7 @@ export async function GET(
 
     // 获取每个顶级评论的回复
     const commentsWithReplies = await Promise.all(
-      comments.map(async (comment) => {
+      comments.map(async (comment: any) => {
         const replies = await db
           .select({
             id: memoryComments.id,
@@ -142,6 +142,35 @@ export async function POST(
       .select({ username: users.username, avatar: users.avatar })
       .from(users)
       .where(eq(users.id, userId));
+
+    // 处理@提醒通知
+    const mentionedUserIds = body.mentionedUserIds;
+    if (
+      mentionedUserIds &&
+      Array.isArray(mentionedUserIds) &&
+      mentionedUserIds.length > 0
+    ) {
+      // 获取记忆标题
+      const [memory] = await db
+        .select({ title: memories.title })
+        .from(memories)
+        .where(eq(memories.id, memoryId));
+
+      // 为每个被@的用户创建通知
+      for (const mentionedUserId of mentionedUserIds) {
+        if (mentionedUserId !== userId) {
+          await db.insert(notifications).values({
+            userId: mentionedUserId,
+            type: 'mention',
+            title: `${userInfo?.username || '用户'}在评论中@了你`,
+            content: content.trim().substring(0, 100),
+            relatedId: memoryId,
+            relatedType: 'memory',
+            fromUserId: userId
+          });
+        }
+      }
+    }
 
     return NextResponse.json({
       code: 0,

@@ -8,7 +8,8 @@ import { db } from '@/db';
 import {
   locationRecords,
   geofences,
-  geofenceAlerts
+  geofenceAlerts,
+  locationPermissions
 } from '@/db/schema.memorybook';
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'latest'; // latest, history, geofences, alerts
     const patientId = searchParams.get('patientId');
+    const targetUserId = searchParams.get('targetUserId'); // 查看其他用户的位置
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const page = parseInt(searchParams.get('page') || '1');
@@ -34,14 +36,30 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * pageSize;
 
+    // 如果要查看其他用户的位置，需要验证权限
+    let queryUserId = user.id;
+    if (targetUserId && parseInt(targetUserId) !== user.id) {
+      const hasPermission = await checkViewPermission(
+        user.id,
+        parseInt(targetUserId)
+      );
+      if (!hasPermission) {
+        return NextResponse.json(
+          { code: 403, message: '没有查看该用户位置的权限' },
+          { status: 403 }
+        );
+      }
+      queryUserId = parseInt(targetUserId);
+    }
+
     switch (type) {
       case 'latest':
         // 获取最新位置
-        return await getLatestLocation(user.id, patientId);
+        return await getLatestLocation(queryUserId, patientId);
       case 'history':
         // 获取历史轨迹
         return await getLocationHistory(
-          user.id,
+          queryUserId,
           patientId,
           startDate,
           endDate,
@@ -328,6 +346,27 @@ async function checkGeofenceAlerts(
   }
 
   return alerts;
+}
+
+// 检查是否有查看权限
+async function checkViewPermission(
+  viewerId: number,
+  ownerId: number
+): Promise<boolean> {
+  const [permission] = await db
+    .select()
+    .from(locationPermissions)
+    .where(
+      and(
+        eq(locationPermissions.ownerId, ownerId),
+        eq(locationPermissions.viewerId, viewerId),
+        eq(locationPermissions.isActive, true),
+        eq(locationPermissions.canViewRealtime, true)
+      )
+    )
+    .limit(1);
+
+  return !!permission;
 }
 
 // 计算两点之间的距离（米）
