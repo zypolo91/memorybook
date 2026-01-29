@@ -38,6 +38,7 @@ export const memories = pgTable(
     location: varchar('location', { length: 200 }), // 地点
     mood: varchar('mood', { length: 50 }), // 心情标签
     isPublic: boolean('is_public').default(false), // 是否公开
+    layoutType: varchar('layout_type', { length: 50 }), // 排版类型: classic, magazine, polaroid, scrapbook, minimal, story, grid, timeline
     viewCount: integer('view_count').default(0),
     likeCount: integer('like_count').default(0),
     commentCount: integer('comment_count').default(0),

@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
       location,
       mood,
       isPublic = false,
+      layoutType,
       mediaList = [],
       tagIds = []
     } = body;
@@ -134,7 +135,8 @@ export async function POST(request: NextRequest) {
         memoryDate: memoryDate ? new Date(memoryDate) : null,
         location,
         mood,
-        isPublic
+        isPublic,
+        layoutType
       })
       .returning();
 

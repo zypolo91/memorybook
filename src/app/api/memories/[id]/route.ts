@@ -111,6 +111,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       location,
       mood,
       isPublic,
+      layoutType,
       mediaList,
       tagIds
     } = body;
@@ -127,6 +128,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         location: location ?? existingMemory.location,
         mood: mood ?? existingMemory.mood,
         isPublic: isPublic ?? existingMemory.isPublic,
+        layoutType: layoutType ?? existingMemory.layoutType,
         updatedAt: new Date()
       })
       .where(eq(memories.id, memoryId))
