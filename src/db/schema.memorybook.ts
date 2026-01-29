@@ -225,6 +225,32 @@ export const patients = pgTable('patients', {
   updatedAt: timestamp('updated_at').defaultNow()
 });
 
+/**
+ * 家庭圈消息表
+ */
+export const familyMessages = pgTable(
+  'family_messages',
+  {
+    id: serial('id').primaryKey(),
+    circleId: integer('circle_id')
+      .notNull()
+      .references(() => familyCircles.id, { onDelete: 'cascade' }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    type: varchar('type', { length: 20 }).notNull().default('text'), // text, image, location, shake
+    content: text('content').notNull(),
+    replyToId: integer('reply_to_id'),
+    isDeleted: boolean('is_deleted').default(false),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    circleIdIdx: index('family_messages_circle_id_idx').on(table.circleId),
+    userIdIdx: index('family_messages_user_id_idx').on(table.userId),
+    createdAtIdx: index('family_messages_created_at_idx').on(table.createdAt)
+  })
+);
+
 // ========================================
 // 互动相关表
 // ========================================

@@ -37,6 +37,7 @@ export const albumMemories = memorybookSchema.albumMemories;
 // 家庭圈相关
 export const familyCircles = memorybookSchema.familyCircles;
 export const familyMembers = memorybookSchema.familyMembers;
+export const familyMessages = memorybookSchema.familyMessages;
 export const patients = memorybookSchema.patients;
 
 // 互动相关

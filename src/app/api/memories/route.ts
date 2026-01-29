@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { memories, memoryMedia, memoryTags, tags } from '@/db/schema';
-import { eq, desc, and, like, sql } from 'drizzle-orm';
+import { eq, desc, and, like, sql, ne } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 
 /**
@@ -19,7 +19,11 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * pageSize;
 
     // 构建查询条件
-    const conditions = [eq(memories.status, status)];
+    const conditions = [
+      eq(memories.status, status),
+      // 排除相册上传的隐藏记忆
+      ne(memories.title, '__album_uploads__')
+    ];
     if (userId) {
       conditions.push(eq(memories.userId, parseInt(userId)));
     }
