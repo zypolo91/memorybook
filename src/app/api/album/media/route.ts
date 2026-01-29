@@ -140,7 +140,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       code: 0,
       message: 'success',
-      data: mediaList
+      data: {
+        list: mediaList,
+        page,
+        pageSize,
+        total: mediaList.length
+      }
     });
   } catch (error) {
     console.error('获取相册媒体失败:', error);

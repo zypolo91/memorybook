@@ -7,10 +7,11 @@ import { getCurrentUser } from '@/lib/auth';
 // 获取评论列表
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const memoryId = parseInt(params.id);
+    const { id } = await params;
+    const memoryId = parseInt(id);
     if (isNaN(memoryId)) {
       return NextResponse.json({ code: 1, message: '无效的记忆ID' });
     }
@@ -73,9 +74,18 @@ export async function GET(
           .orderBy(memoryComments.createdAt)
           .limit(10);
 
+        // 为每个回复添加被回复者用户名（即父评论的用户名）
+        const repliesWithReplyTo = replies.map(
+          (reply: (typeof replies)[0]) => ({
+            ...reply,
+            replyToUserId: comment.userId,
+            replyToUserName: comment.userName
+          })
+        );
+
         return {
           ...comment,
-          replies
+          replies: repliesWithReplyTo
         };
       })
     );
@@ -94,7 +104,7 @@ export async function GET(
 // 创建评论
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getCurrentUser(request);
@@ -102,7 +112,8 @@ export async function POST(
       return NextResponse.json({ code: 401, message: '请先登录' });
     }
 
-    const memoryId = parseInt(params.id);
+    const { id } = await params;
+    const memoryId = parseInt(id);
     if (isNaN(memoryId)) {
       return NextResponse.json({ code: 1, message: '无效的记忆ID' });
     }
