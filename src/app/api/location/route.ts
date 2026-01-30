@@ -1,16 +1,11 @@
 /**
  * 位置监控 API
- * 管理阿尔茨海默患者的实时位置和地理围栏
+ * 管理用户的实时位置
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import {
-  locationRecords,
-  geofences,
-  geofenceAlerts,
-  locationPermissions
-} from '@/db/schema.memorybook';
+import { locationRecords, locationPermissions } from '@/db/schema.memorybook';
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 
@@ -66,12 +61,6 @@ export async function GET(request: NextRequest) {
           pageSize,
           offset
         );
-      case 'geofences':
-        // 获取围栏列表
-        return await getGeofences(user.id, patientId);
-      case 'alerts':
-        // 获取报警列表
-        return await getAlerts(user.id, pageSize, offset);
       default:
         return NextResponse.json(
           { code: 400, message: '无效的类型' },
@@ -136,22 +125,10 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    // 检查是否触发围栏报警
-    const alerts = await checkGeofenceAlerts(
-      user.id,
-      patientId,
-      latitude,
-      longitude,
-      address
-    );
-
     return NextResponse.json({
       code: 0,
       message: '上报成功',
-      data: {
-        record,
-        alerts
-      }
+      data: record
     });
   } catch (error) {
     console.error('POST /api/location error:', error);
@@ -224,130 +201,6 @@ async function getLocationHistory(
   });
 }
 
-// 获取围栏列表
-async function getGeofences(userId: number, patientId: string | null) {
-  const conditions = [eq(geofences.userId, userId)];
-  if (patientId) {
-    conditions.push(eq(geofences.patientId, parseInt(patientId)));
-  }
-
-  const list = await db
-    .select()
-    .from(geofences)
-    .where(and(...conditions))
-    .orderBy(desc(geofences.createdAt));
-
-  return NextResponse.json({
-    code: 0,
-    data: list
-  });
-}
-
-// 获取报警列表
-async function getAlerts(userId: number, limit: number, offset: number) {
-  const list = await db
-    .select()
-    .from(geofenceAlerts)
-    .where(eq(geofenceAlerts.userId, userId))
-    .orderBy(desc(geofenceAlerts.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(geofenceAlerts)
-    .where(eq(geofenceAlerts.userId, userId));
-
-  // 获取未读数量
-  const [{ unread }] = await db
-    .select({ unread: sql<number>`count(*)` })
-    .from(geofenceAlerts)
-    .where(
-      and(eq(geofenceAlerts.userId, userId), eq(geofenceAlerts.isRead, false))
-    );
-
-  return NextResponse.json({
-    code: 0,
-    data: {
-      list,
-      total: Number(count),
-      unread: Number(unread)
-    }
-  });
-}
-
-// 检查围栏报警
-async function checkGeofenceAlerts(
-  userId: number,
-  patientId: string | number | null,
-  latitude: number,
-  longitude: number,
-  address?: string
-) {
-  const alerts: any[] = [];
-
-  // 获取活跃的围栏
-  const activeGeofences = await db
-    .select()
-    .from(geofences)
-    .where(and(eq(geofences.userId, userId), eq(geofences.isActive, true)));
-
-  for (const fence of activeGeofences) {
-    // 计算距离
-    const distance = calculateDistance(
-      latitude,
-      longitude,
-      fence.centerLat,
-      fence.centerLng
-    );
-
-    const isInside = distance <= fence.radius;
-
-    // 检查是否需要报警
-    if (!isInside && fence.alertOnExit) {
-      // 离开围栏，触发报警
-      const [alert] = await db
-        .insert(geofenceAlerts)
-        .values({
-          userId,
-          geofenceId: fence.id,
-          patientId: patientId
-            ? typeof patientId === 'string'
-              ? parseInt(patientId)
-              : patientId
-            : null,
-          alertType: 'exit',
-          latitude,
-          longitude,
-          address
-        })
-        .returning();
-      alerts.push(alert);
-    } else if (isInside && fence.alertOnEnter) {
-      // 进入围栏，触发报警
-      const [alert] = await db
-        .insert(geofenceAlerts)
-        .values({
-          userId,
-          geofenceId: fence.id,
-          patientId: patientId
-            ? typeof patientId === 'string'
-              ? parseInt(patientId)
-              : patientId
-            : null,
-          alertType: 'enter',
-          latitude,
-          longitude,
-          address
-        })
-        .returning();
-      alerts.push(alert);
-    }
-  }
-
-  return alerts;
-}
-
 // 检查是否有查看权限
 async function checkViewPermission(
   viewerId: number,
@@ -367,24 +220,4 @@ async function checkViewPermission(
     .limit(1);
 
   return !!permission;
-}
-
-// 计算两点之间的距离（米）
-function calculateDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 6371000; // 地球半径（米）
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
 }

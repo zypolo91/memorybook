@@ -221,6 +221,9 @@ export const patients = pgTable('patients', {
   birthDate: timestamp('birth_date'),
   diagnosisDate: timestamp('diagnosis_date'), // 确诊日期
   stage: varchar('stage', { length: 20 }), // 病情阶段: early, middle, late
+  cognitiveStatus: varchar('cognitive_status', { length: 30 }), // 认知状态: normal, scd, mci, mild_ad, moderate_ad, severe_ad
+  lastAssessmentDate: timestamp('last_assessment_date'),
+  lastAssessmentScore: integer('last_assessment_score'),
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow()
@@ -876,6 +879,413 @@ export const geofenceAlertsRelations = relations(geofenceAlerts, ({ one }) => ({
   }),
   patient: one(patients, {
     fields: [geofenceAlerts.patientId],
+    references: [patients.id]
+  })
+}));
+
+// ========================================
+// 阿尔茨海默病健康监控相关表
+// ========================================
+
+/**
+ * 认知评估表 - MMSE/MoCA/ACE-R 量表评估结果
+ */
+export const cognitiveAssessments = pgTable(
+  'cognitive_assessments',
+  {
+    id: serial('id').primaryKey(),
+    patientId: integer('patient_id')
+      .notNull()
+      .references(() => patients.id, { onDelete: 'cascade' }),
+    assessorId: integer('assessor_id')
+      .notNull()
+      .references(() => users.id),
+    scaleType: varchar('scale_type', { length: 20 }).notNull(), // mmse, moca, acer
+    totalScore: integer('total_score').notNull(),
+    maxScore: integer('max_score').notNull(),
+    dimensionScores: jsonb('dimension_scores'), // 各维度得分
+    severity: varchar('severity', { length: 20 }), // normal, mild, moderate, severe
+    assessorNotes: text('assessor_notes'),
+    assessedAt: timestamp('assessed_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    patientIdIdx: index('cognitive_assessments_patient_id_idx').on(
+      table.patientId
+    ),
+    scaleTypeIdx: index('cognitive_assessments_scale_type_idx').on(
+      table.scaleType
+    ),
+    assessedAtIdx: index('cognitive_assessments_assessed_at_idx').on(
+      table.assessedAt
+    )
+  })
+);
+
+/**
+ * 生物标志物记录表 - CSF/血液/影像学检查
+ */
+export const biomarkerRecords = pgTable(
+  'biomarker_records',
+  {
+    id: serial('id').primaryKey(),
+    patientId: integer('patient_id')
+      .notNull()
+      .references(() => patients.id, { onDelete: 'cascade' }),
+    creatorId: integer('creator_id')
+      .notNull()
+      .references(() => users.id),
+    category: varchar('category', { length: 20 }).notNull(), // csf, blood, imaging
+    biomarkerType: varchar('biomarker_type', { length: 50 }).notNull(), // ab42, ttau, ptau181, mta_score
+    value: doublePrecision('value').notNull(),
+    unit: varchar('unit', { length: 30 }),
+    referenceRange: varchar('reference_range', { length: 100 }),
+    interpretation: varchar('interpretation', { length: 20 }), // normal, abnormal, borderline
+    hospitalName: varchar('hospital_name', { length: 200 }),
+    doctorName: varchar('doctor_name', { length: 100 }),
+    reportImageUrl: text('report_image_url'),
+    testedAt: timestamp('tested_at').notNull(),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    patientIdIdx: index('biomarker_records_patient_id_idx').on(table.patientId),
+    categoryIdx: index('biomarker_records_category_idx').on(table.category),
+    biomarkerTypeIdx: index('biomarker_records_biomarker_type_idx').on(
+      table.biomarkerType
+    ),
+    testedAtIdx: index('biomarker_records_tested_at_idx').on(table.testedAt)
+  })
+);
+
+/**
+ * 认知训练游戏表 - 系统预置游戏定义
+ */
+export const cognitiveGames = pgTable(
+  'cognitive_games',
+  {
+    id: serial('id').primaryKey(),
+    name: varchar('name', { length: 100 }).notNull(),
+    nameEn: varchar('name_en', { length: 100 }),
+    category: varchar('category', { length: 30 }).notNull(), // memory, attention, executive, language
+    description: text('description'),
+    iconUrl: varchar('icon_url', { length: 500 }),
+    minLevel: integer('min_level').default(1),
+    maxLevel: integer('max_level').default(5),
+    estimatedMinutes: integer('estimated_minutes').default(5),
+    instructions: text('instructions'),
+    isActive: boolean('is_active').default(true),
+    sortOrder: integer('sort_order').default(0),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    categoryIdx: index('cognitive_games_category_idx').on(table.category)
+  })
+);
+
+/**
+ * 游戏训练记录表
+ */
+export const gameSessions = pgTable(
+  'game_sessions',
+  {
+    id: serial('id').primaryKey(),
+    patientId: integer('patient_id')
+      .notNull()
+      .references(() => patients.id, { onDelete: 'cascade' }),
+    gameId: integer('game_id')
+      .notNull()
+      .references(() => cognitiveGames.id),
+    level: integer('level').notNull(),
+    score: integer('score').notNull(),
+    maxScore: integer('max_score'),
+    durationSeconds: integer('duration_seconds'),
+    accuracy: doublePrecision('accuracy'), // 0-100
+    details: jsonb('details'),
+    playedAt: timestamp('played_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    patientIdIdx: index('game_sessions_patient_id_idx').on(table.patientId),
+    gameIdIdx: index('game_sessions_game_id_idx').on(table.gameId),
+    playedAtIdx: index('game_sessions_played_at_idx').on(table.playedAt)
+  })
+);
+
+/**
+ * 饮食记录表 - MIND饮食
+ */
+export const dietRecords = pgTable(
+  'diet_records',
+  {
+    id: serial('id').primaryKey(),
+    patientId: integer('patient_id')
+      .notNull()
+      .references(() => patients.id, { onDelete: 'cascade' }),
+    creatorId: integer('creator_id')
+      .notNull()
+      .references(() => users.id),
+    recordDate: timestamp('record_date').notNull(),
+    mealType: varchar('meal_type', { length: 20 }).notNull(), // breakfast, lunch, dinner, snack
+    foods: jsonb('foods').notNull(),
+    mindScore: integer('mind_score'),
+    calories: integer('calories'),
+    notes: text('notes'),
+    photoUrl: varchar('photo_url', { length: 500 }),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    patientIdIdx: index('diet_records_patient_id_idx').on(table.patientId),
+    recordDateIdx: index('diet_records_record_date_idx').on(table.recordDate),
+    mealTypeIdx: index('diet_records_meal_type_idx').on(table.mealType)
+  })
+);
+
+/**
+ * MIND食物分类表
+ */
+export const mindFoodCategories = pgTable('mind_food_categories', {
+  id: serial('id').primaryKey(),
+  code: varchar('code', { length: 30 }).notNull().unique(),
+  name: varchar('name', { length: 50 }).notNull(),
+  nameEn: varchar('name_en', { length: 50 }),
+  description: text('description'),
+  isRecommended: boolean('is_recommended').default(true),
+  weeklyTarget: integer('weekly_target'),
+  dailyTarget: doublePrecision('daily_target'),
+  icon: varchar('icon', { length: 50 }),
+  color: varchar('color', { length: 20 }),
+  exampleFoods: text('example_foods'),
+  sortOrder: integer('sort_order').default(0)
+});
+
+/**
+ * 运动记录表
+ */
+export const exerciseRecords = pgTable(
+  'exercise_records',
+  {
+    id: serial('id').primaryKey(),
+    patientId: integer('patient_id')
+      .notNull()
+      .references(() => patients.id, { onDelete: 'cascade' }),
+    creatorId: integer('creator_id')
+      .notNull()
+      .references(() => users.id),
+    exerciseType: varchar('exercise_type', { length: 30 }).notNull(), // aerobic, strength, finger, balance
+    exerciseName: varchar('exercise_name', { length: 100 }).notNull(),
+    durationMinutes: integer('duration_minutes').notNull(),
+    intensity: varchar('intensity', { length: 20 }), // low, moderate, high
+    heartRateAvg: integer('heart_rate_avg'),
+    heartRateMax: integer('heart_rate_max'),
+    caloriesBurned: integer('calories_burned'),
+    steps: integer('steps'),
+    distanceMeters: integer('distance_meters'),
+    notes: text('notes'),
+    exercisedAt: timestamp('exercised_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    patientIdIdx: index('exercise_records_patient_id_idx').on(table.patientId),
+    exerciseTypeIdx: index('exercise_records_exercise_type_idx').on(
+      table.exerciseType
+    ),
+    exercisedAtIdx: index('exercise_records_exercised_at_idx').on(
+      table.exercisedAt
+    )
+  })
+);
+
+/**
+ * 运动计划表
+ */
+export const exercisePlans = pgTable(
+  'exercise_plans',
+  {
+    id: serial('id').primaryKey(),
+    patientId: integer('patient_id')
+      .notNull()
+      .references(() => patients.id, { onDelete: 'cascade' }),
+    creatorId: integer('creator_id')
+      .notNull()
+      .references(() => users.id),
+    name: varchar('name', { length: 100 }).notNull(),
+    description: text('description'),
+    exercises: jsonb('exercises').notNull(),
+    weeklyGoalMinutes: integer('weekly_goal_minutes').default(150),
+    isActive: boolean('is_active').default(true),
+    startDate: timestamp('start_date'),
+    endDate: timestamp('end_date'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow()
+  },
+  (table) => ({
+    patientIdIdx: index('exercise_plans_patient_id_idx').on(table.patientId)
+  })
+);
+
+/**
+ * 运动视频表 - 系统预置
+ */
+export const exerciseVideos = pgTable(
+  'exercise_videos',
+  {
+    id: serial('id').primaryKey(),
+    title: varchar('title', { length: 200 }).notNull(),
+    description: text('description'),
+    exerciseType: varchar('exercise_type', { length: 30 }).notNull(),
+    videoUrl: varchar('video_url', { length: 500 }).notNull(),
+    thumbnailUrl: varchar('thumbnail_url', { length: 500 }),
+    durationSeconds: integer('duration_seconds'),
+    difficulty: varchar('difficulty', { length: 20 }), // easy, medium, hard
+    targetAudience: varchar('target_audience', { length: 50 }),
+    viewCount: integer('view_count').default(0),
+    isActive: boolean('is_active').default(true),
+    sortOrder: integer('sort_order').default(0),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    exerciseTypeIdx: index('exercise_videos_exercise_type_idx').on(
+      table.exerciseType
+    )
+  })
+);
+
+/**
+ * 健康评分历史表
+ */
+export const healthScores = pgTable(
+  'health_scores',
+  {
+    id: serial('id').primaryKey(),
+    patientId: integer('patient_id')
+      .notNull()
+      .references(() => patients.id, { onDelete: 'cascade' }),
+    scoreDate: timestamp('score_date').notNull(),
+    cognitiveScore: integer('cognitive_score'),
+    trainingScore: integer('training_score'),
+    dietScore: integer('diet_score'),
+    exerciseScore: integer('exercise_score'),
+    overallScore: integer('overall_score'),
+    details: jsonb('details'),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    patientIdIdx: index('health_scores_patient_id_idx').on(table.patientId),
+    scoreDateIdx: index('health_scores_score_date_idx').on(table.scoreDate)
+  })
+);
+
+/**
+ * 食谱推荐表
+ */
+export const recipes = pgTable(
+  'recipes',
+  {
+    id: serial('id').primaryKey(),
+    title: varchar('title', { length: 200 }).notNull(),
+    description: text('description'),
+    category: varchar('category', { length: 30 }),
+    mindCategories: jsonb('mind_categories'),
+    ingredients: jsonb('ingredients'),
+    instructions: text('instructions'),
+    prepTimeMinutes: integer('prep_time_minutes'),
+    cookTimeMinutes: integer('cook_time_minutes'),
+    servings: integer('servings'),
+    caloriesPerServing: integer('calories_per_serving'),
+    imageUrl: varchar('image_url', { length: 500 }),
+    videoUrl: varchar('video_url', { length: 500 }),
+    difficulty: varchar('difficulty', { length: 20 }),
+    isFeatured: boolean('is_featured').default(false),
+    viewCount: integer('view_count').default(0),
+    likeCount: integer('like_count').default(0),
+    isActive: boolean('is_active').default(true),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    categoryIdx: index('recipes_category_idx').on(table.category)
+  })
+);
+
+// 阿尔茨海默健康模块关系定义
+export const cognitiveAssessmentsRelations = relations(
+  cognitiveAssessments,
+  ({ one }) => ({
+    patient: one(patients, {
+      fields: [cognitiveAssessments.patientId],
+      references: [patients.id]
+    }),
+    assessor: one(users, {
+      fields: [cognitiveAssessments.assessorId],
+      references: [users.id]
+    })
+  })
+);
+
+export const biomarkerRecordsRelations = relations(
+  biomarkerRecords,
+  ({ one }) => ({
+    patient: one(patients, {
+      fields: [biomarkerRecords.patientId],
+      references: [patients.id]
+    }),
+    creator: one(users, {
+      fields: [biomarkerRecords.creatorId],
+      references: [users.id]
+    })
+  })
+);
+
+export const gameSessionsRelations = relations(gameSessions, ({ one }) => ({
+  patient: one(patients, {
+    fields: [gameSessions.patientId],
+    references: [patients.id]
+  }),
+  game: one(cognitiveGames, {
+    fields: [gameSessions.gameId],
+    references: [cognitiveGames.id]
+  })
+}));
+
+export const dietRecordsRelations = relations(dietRecords, ({ one }) => ({
+  patient: one(patients, {
+    fields: [dietRecords.patientId],
+    references: [patients.id]
+  }),
+  creator: one(users, {
+    fields: [dietRecords.creatorId],
+    references: [users.id]
+  })
+}));
+
+export const exerciseRecordsRelations = relations(
+  exerciseRecords,
+  ({ one }) => ({
+    patient: one(patients, {
+      fields: [exerciseRecords.patientId],
+      references: [patients.id]
+    }),
+    creator: one(users, {
+      fields: [exerciseRecords.creatorId],
+      references: [users.id]
+    })
+  })
+);
+
+export const exercisePlansRelations = relations(exercisePlans, ({ one }) => ({
+  patient: one(patients, {
+    fields: [exercisePlans.patientId],
+    references: [patients.id]
+  }),
+  creator: one(users, {
+    fields: [exercisePlans.creatorId],
+    references: [users.id]
+  })
+}));
+
+export const healthScoresRelations = relations(healthScores, ({ one }) => ({
+  patient: one(patients, {
+    fields: [healthScores.patientId],
     references: [patients.id]
   })
 }));
