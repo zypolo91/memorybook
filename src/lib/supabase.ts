@@ -5,17 +5,17 @@ let adminClient: SupabaseClient | null = null;
 const nonAsciiRegex = /[^\x00-\x7F]/;
 const encodedSegmentRegex = /^__u8hex_([0-9a-fA-F]+)__(.*)$/;
 
-export function getSupabaseAdmin(): SupabaseClient {
+export function getSupabaseAdmin(): SupabaseClient | null {
   if (adminClient) return adminClient;
 
   const url = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!url) {
-    throw new Error('Missing SUPABASE_URL');
-  }
-  if (!serviceRoleKey) {
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !serviceRoleKey) {
+    console.warn(
+      'Supabase not configured: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY'
+    );
+    return null;
   }
 
   adminClient = createClient(url, serviceRoleKey, {

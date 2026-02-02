@@ -6,14 +6,7 @@ import {
   unauthorizedResponse
 } from '@/service/response';
 import { getUserFromRequest, hasPermission } from '@/lib/server-permissions';
-import {
-  applyStoragePrefix,
-  buildObjectPath,
-  fromStorageKey,
-  getSupabaseAdmin,
-  getSupabaseStorageBucket,
-  normalizeStoragePath
-} from '@/lib/supabase';
+import { listR2Objects, uploadToR2, deleteMultipleFromR2 } from '@/lib/r2';
 
 export const runtime = 'nodejs';
 
@@ -21,37 +14,36 @@ const PERM_CREATE = 'system.file.folder.create';
 const PERM_DELETE = 'system.file.folder.delete';
 const PERM_READ = 'system.file.read';
 
-function isFolderItem(item: any): boolean {
-  return item?.id == null && item?.metadata == null;
+function normalizeStoragePath(path: string): string {
+  return path.replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+}
+
+function buildObjectPath(dir: string, name: string): string {
+  return dir ? `${dir}/${name}` : name;
 }
 
 async function listRecursive(dir: string): Promise<string[]> {
-  const supabase = getSupabaseAdmin();
-  const bucket = getSupabaseStorageBucket();
-
   const queue: string[] = [dir];
   const files: string[] = [];
 
   while (queue.length) {
     const current = queue.shift()!;
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .list(applyStoragePrefix(current), {
-        limit: 1000,
-        offset: 0,
-        sortBy: { column: 'name', order: 'asc' }
-      });
+    const prefix = current ? `${current}/` : '';
 
-    if (error) throw new Error(error.message);
+    try {
+      const result = await listR2Objects(prefix, 1000);
 
-    for (const item of data || []) {
-      const childName = fromStorageKey(item.name);
-      const childPath = buildObjectPath(current, childName);
-      if (isFolderItem(item)) {
-        queue.push(childPath);
-      } else {
-        files.push(childPath);
+      // 收集文件和文件夹
+      for (const item of result.items) {
+        if (item.isFolder) {
+          queue.push(item.key.replace(/\/$/, ''));
+        } else {
+          files.push(item.key);
+        }
       }
+    } catch (error) {
+      console.error('listRecursive error:', error);
+      break;
     }
   }
 
@@ -70,25 +62,15 @@ export async function GET(request: NextRequest) {
     const rawDir = searchParams.get('path') || '';
     const dir = rawDir ? normalizeStoragePath(rawDir) : '';
 
-    const supabase = getSupabaseAdmin();
-    const bucket = getSupabaseStorageBucket();
+    const prefix = dir ? `${dir}/` : '';
+    const result = await listR2Objects(prefix, 1000);
 
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .list(applyStoragePrefix(dir), {
-        limit: 1000,
-        offset: 0,
-        sortBy: { column: 'name', order: 'asc' }
-      });
-
-    if (error) return errorResponse(error.message);
-
-    const folders = (data || [])
-      .filter((item: any) => isFolderItem(item))
-      .map((item: any) => ({
-        name: fromStorageKey(item.name),
-        path: buildObjectPath(dir, fromStorageKey(item.name)),
-        updatedAt: item?.updated_at ?? null
+    const folders = result.items
+      .filter((item) => item.isFolder)
+      .map((item) => ({
+        name: item.name,
+        path: item.key.replace(/\/$/, ''),
+        updatedAt: item.lastModified
       }));
 
     return successResponse({ path: dir, folders });
@@ -113,19 +95,11 @@ export async function POST(request: NextRequest) {
     const folderPath = normalizeStoragePath(rawPath);
     if (!folderPath) return errorResponse('path 不合法');
 
-    const supabase = getSupabaseAdmin();
-    const bucket = getSupabaseStorageBucket();
-
     const keepPath = buildObjectPath(folderPath, '.keep');
 
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(applyStoragePrefix(keepPath), Buffer.alloc(0), {
-        contentType: 'application/octet-stream',
-        upsert: true
-      });
+    // 使用 R2 上传一个空文件来创建文件夹
+    await uploadToR2(Buffer.alloc(0), keepPath, 'application/octet-stream');
 
-    if (error) return errorResponse(error.message);
     return successResponse({ created: folderPath });
   } catch (error) {
     console.error('Folders POST failed:', error);
@@ -148,27 +122,15 @@ export async function DELETE(request: NextRequest) {
     const dir = normalizeStoragePath(rawPath);
     if (!dir) return errorResponse('path 不合法');
 
-    const supabase = getSupabaseAdmin();
-    const bucket = getSupabaseStorageBucket();
-
     const allFiles = await listRecursive(dir);
     if (allFiles.length === 0) {
       return successResponse({ deleted: [], note: 'folder empty' });
     }
 
-    // chunk remove calls to avoid huge payloads
-    const deleted: string[] = [];
-    for (let i = 0; i < allFiles.length; i += 100) {
-      const chunk = allFiles.slice(i, i + 100);
-      const { error } = await supabase.storage
-        .from(bucket)
-        .remove(chunk.map(applyStoragePrefix));
+    // 使用 R2 删除文件
+    await deleteMultipleFromR2(allFiles);
 
-      if (error) return errorResponse(error.message);
-      deleted.push(...chunk);
-    }
-
-    return successResponse({ deleted });
+    return successResponse({ deleted: allFiles });
   } catch (error) {
     console.error('Folders DELETE failed:', error);
     return errorResponse('删除文件夹失败');

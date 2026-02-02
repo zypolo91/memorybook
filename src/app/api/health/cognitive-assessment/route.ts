@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { db } from '@/db';
+import { cognitiveAssessments } from '@/db/schema';
+import { eq, desc, and } from 'drizzle-orm';
 
 // POST: 保存认知评估详细记录
 // 兼容现有 cognitive_assessments 表结构
@@ -56,30 +53,21 @@ export async function POST(request: NextRequest) {
       duration_seconds
     });
 
-    // 插入数据库 - 使用现有表的字段名
-    const { data, error } = await supabase
-      .from('cognitive_assessments')
-      .insert({
-        patient_id,
-        assessor_id: assessor_id || 1, // 默认评估者ID
-        scale_type: assessment_type.toLowerCase(), // 转换为小写: MMSE -> mmse
-        total_score,
-        max_score,
-        dimension_scores,
-        severity: severity_level, // severity_level -> severity
-        assessor_notes: assessorNotes,
-        assessed_at: new Date().toISOString() // assessment_date -> assessed_at
+    // 插入数据库 - 使用 Drizzle
+    const [data] = await db
+      .insert(cognitiveAssessments)
+      .values({
+        patientId: patient_id,
+        assessorId: assessor_id || 1,
+        scaleType: assessment_type.toLowerCase(),
+        totalScore: total_score,
+        maxScore: max_score,
+        dimensionScores: dimension_scores,
+        severity: severity_level,
+        assessorNotes: assessorNotes,
+        assessedAt: new Date()
       })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('保存评估失败:', error);
-      return NextResponse.json(
-        { code: 1, message: '保存评估失败: ' + error.message },
-        { status: 500 }
-      );
-    }
+      .returning();
 
     return NextResponse.json({
       code: 0,
@@ -110,26 +98,23 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let query = supabase
-      .from('cognitive_assessments')
-      .select('*')
-      .eq('patient_id', patientId)
-      .order('assessed_at', { ascending: false }) // 使用现有表的字段名
-      .limit(limit);
+    // 使用 Drizzle 查询
+    const conditions = [
+      eq(cognitiveAssessments.patientId, parseInt(patientId))
+    ];
 
     if (assessmentType) {
-      query = query.eq('scale_type', assessmentType.toLowerCase()); // 使用现有表的字段名
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('获取评估记录失败:', error);
-      return NextResponse.json(
-        { code: 1, message: '获取评估记录失败' },
-        { status: 500 }
+      conditions.push(
+        eq(cognitiveAssessments.scaleType, assessmentType.toLowerCase())
       );
     }
+
+    const data = await db
+      .select()
+      .from(cognitiveAssessments)
+      .where(and(...conditions))
+      .orderBy(desc(cognitiveAssessments.assessedAt))
+      .limit(limit);
 
     return NextResponse.json({
       code: 0,
