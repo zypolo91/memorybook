@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // 尝试获取患者信息，如果表不存在则返回默认数据
+    // 尝试获取患者信息
     let patient: any = null;
     try {
       const [p] = await db
@@ -53,76 +53,47 @@ export async function GET(request: NextRequest) {
       patient = p;
     } catch (dbError) {
       console.error('Database error:', dbError);
-      // 返回默认演示数据
+      // 数据库错误，返回空数据而非 mock 数据
       return NextResponse.json({
         code: 0,
         data: {
-          patient: { id: pid, name: '演示患者', cognitiveStatus: null },
+          patient: null,
           scores: {
-            overall: 65,
-            cognitive: 50,
-            training: 30,
-            diet: 40,
-            exercise: 35
+            overall: 0,
+            cognitive: 0,
+            training: 0,
+            diet: 0,
+            exercise: 0
           },
           latestAssessment: null,
           scoreTrend: [],
-          alerts: [
-            {
-              type: 'assessment',
-              level: 'medium',
-              message: '尚未进行认知评估，建议完成首次评估'
-            },
-            {
-              type: 'training',
-              level: 'medium',
-              message: '本周认知训练不足，建议每天进行10分钟训练'
-            }
-          ],
-          todayTasks: [
-            {
-              type: 'training',
-              title: '完成1次认知训练游戏',
-              completed: false
-            },
-            { type: 'diet', title: '记录今日三餐', completed: false },
-            { type: 'exercise', title: '完成30分钟运动', completed: false }
-          ]
+          alerts: [],
+          todayTasks: [],
+          isEmpty: true,
+          message: '暂无健康数据，请先完成认知评估或记录健康数据'
         }
       });
     }
 
     if (!patient) {
-      // 患者不存在，返回演示数据
+      // 患者不存在，返回空数据而非 mock 数据
       return NextResponse.json({
         code: 0,
         data: {
-          patient: { id: pid, name: '演示患者', cognitiveStatus: null },
+          patient: null,
           scores: {
-            overall: 65,
-            cognitive: 50,
-            training: 30,
-            diet: 40,
-            exercise: 35
+            overall: 0,
+            cognitive: 0,
+            training: 0,
+            diet: 0,
+            exercise: 0
           },
           latestAssessment: null,
           scoreTrend: [],
-          alerts: [
-            {
-              type: 'assessment',
-              level: 'medium',
-              message: '尚未进行认知评估，建议完成首次评估'
-            }
-          ],
-          todayTasks: [
-            {
-              type: 'training',
-              title: '完成1次认知训练游戏',
-              completed: false
-            },
-            { type: 'diet', title: '记录今日三餐', completed: false },
-            { type: 'exercise', title: '完成30分钟运动', completed: false }
-          ]
+          alerts: [],
+          todayTasks: [],
+          isEmpty: true,
+          message: '暂无健康数据，请先完成认知评估或记录健康数据'
         }
       });
     }
@@ -140,6 +111,39 @@ export async function GET(request: NextRequest) {
     const trainingScore = await calculateTrainingScore(pid, weekAgo);
     const dietScore = await calculateDietScore(pid, weekAgo);
     const exerciseScore = await calculateExerciseScore(pid, weekAgo);
+
+    // 检查是否所有数据都为空（所有评分都是0）
+    const hasNoData =
+      cognitiveScore === 0 &&
+      trainingScore === 0 &&
+      dietScore === 0 &&
+      exerciseScore === 0;
+
+    if (hasNoData) {
+      return NextResponse.json({
+        code: 0,
+        data: {
+          patient: {
+            id: patient.id,
+            name: patient.name,
+            cognitiveStatus: patient.cognitiveStatus
+          },
+          scores: {
+            overall: 0,
+            cognitive: 0,
+            training: 0,
+            diet: 0,
+            exercise: 0
+          },
+          latestAssessment: null,
+          scoreTrend: [],
+          alerts: [],
+          todayTasks: [],
+          isEmpty: true,
+          message: '暂无健康数据，请先完成认知评估或记录健康数据'
+        }
+      });
+    }
 
     // 计算综合评分
     const overallScore = Math.round(

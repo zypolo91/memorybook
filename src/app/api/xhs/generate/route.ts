@@ -10,7 +10,7 @@ import { getCurrentUser } from '@/lib/auth';
 const AI_API_URL =
   process.env.AI_API_URL || 'https://aihubmix.com/v1/chat/completions';
 const AI_API_KEY = process.env.AI_API_KEY;
-const AI_MODEL = process.env.AI_MODEL || 'coding-glm-4.7-free';
+const AI_MODEL = process.env.AI_MODEL || 'gemini-3-flash-preview-free';
 
 const XHS_PROMPT = `你是一位专业的小红书内容创作者，擅长将生活故事转化为温暖感人的小红书文章。
 

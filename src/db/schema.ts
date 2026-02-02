@@ -55,6 +55,15 @@ export const healthGuides = memorybookSchema.healthGuides;
 // 阿尔茨海默健康监控相关
 export const cognitiveAssessments = memorybookSchema.cognitiveAssessments;
 export const biomarkerRecords = memorybookSchema.biomarkerRecords;
+
+// 病例档案相关
+export const medicalRecords = memorybookSchema.medicalRecords;
+export const medicalCategories = memorybookSchema.medicalCategories;
+export const medicalTags = memorybookSchema.medicalTags;
+export const medicalRecordTags = memorybookSchema.medicalRecordTags;
+export const medicalRecordsRelations = memorybookSchema.medicalRecordsRelations;
+export const medicalRecordTagsRelations =
+  memorybookSchema.medicalRecordTagsRelations;
 export const cognitiveGames = memorybookSchema.cognitiveGames;
 export const gameSessions = memorybookSchema.gameSessions;
 export const dietRecords = memorybookSchema.dietRecords;
