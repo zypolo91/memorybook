@@ -9,7 +9,7 @@ import { getCurrentUser } from '@/lib/auth';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getCurrentUser(request);
@@ -20,7 +20,8 @@ export async function POST(
       );
     }
 
-    const mediaId = parseInt(params.id);
+    const { id } = await params;
+    const mediaId = parseInt(id);
     if (isNaN(mediaId)) {
       return NextResponse.json(
         { code: 400, message: '无效的媒体ID' },
