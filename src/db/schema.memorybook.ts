@@ -73,6 +73,34 @@ export const memoryMedia = pgTable(
     height: integer('height'),
     duration: integer('duration'), // 视频/音频时长(秒)
     sortOrder: integer('sort_order').default(0),
+    // === 视频/图片编辑参数 ===
+    editParams: jsonb('edit_params'), // 编辑参数JSON，结构见下方注释
+    /*
+     * editParams 结构:
+     * {
+     *   // 滤镜
+     *   filterIndex: number,      // 滤镜索引 (0=原片)
+     *   filterIntensity: number,  // 滤镜强度 (0-1)
+     *
+     *   // 调整
+     *   brightness: number,       // 亮度 (-1 到 1, 0=原始)
+     *   contrast: number,         // 对比度 (0 到 2, 1=原始)
+     *   saturation: number,       // 饱和度 (0 到 2, 1=原始)
+     *
+     *   // 裁剪
+     *   trimStart: number,        // 裁剪开始 (0-1)
+     *   trimEnd: number,          // 裁剪结束 (0-1)
+     *
+     *   // 速度
+     *   playbackSpeed: number,    // 播放速度 (0.25-4)
+     *
+     *   // 音量
+     *   volume: number,           // 音量 (0-1)
+     *
+     *   // 动效
+     *   effectIndex: number,      // 动效索引 (0=无)
+     * }
+     */
     createdAt: timestamp('created_at').defaultNow()
   },
   (table) => ({

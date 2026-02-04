@@ -22,7 +22,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   username: varchar('username', { length: 50 }).notNull(),
   password: varchar('password', { length: 255 }).notNull(),
-  avatar: varchar('avatar', { length: 255 }).default('/avatars/default.jpg'),
+  avatar: text('avatar').default('/avatars/default.jpg'),
   mobile: varchar('mobile', { length: 20 }),
   roleId: integer('role_id').notNull(),
   isSuperAdmin: boolean('is_super_admin').default(false),

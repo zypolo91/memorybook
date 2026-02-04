@@ -106,16 +106,17 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * pageSize;
     const type = searchParams.get('type'); // 'image', 'video', etc.
 
+    // 只查询相册独立上传的媒体（title为__album_uploads__的记忆）
     let conditions = [
-      eq(memories.userId, user.id)
-      // 可以添加更多过滤条件，比如是否公开等
+      eq(memories.userId, user.id),
+      eq(memories.title, '__album_uploads__') // 只查询相册仓库的媒体，不包含记忆动态的媒体
     ];
 
     if (type) {
       conditions.push(eq(memoryMedia.type, type));
     }
 
-    // 联表查询：Media -> Memory
+    // 联表查询：Media -> Memory（只查询相册仓库）
     const mediaList = await db
       .select({
         id: memoryMedia.id,
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
       .from(memoryMedia)
       .innerJoin(memories, eq(memoryMedia.memoryId, memories.id))
       .where(and(...conditions))
-      .orderBy(desc(memories.memoryDate), desc(memoryMedia.createdAt))
+      .orderBy(desc(memoryMedia.createdAt))
       .limit(pageSize)
       .offset(offset);
 

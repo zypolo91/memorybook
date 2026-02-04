@@ -16,17 +16,11 @@ import {
 import { db } from '@/db';
 import { sql } from 'drizzle-orm';
 
-// R2 配置
-const R2 = new S3Client({
-  region: 'auto',
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || ''
-  }
-});
+import { getR2Client, getR2BucketName, getR2PublicUrl } from '@/lib/r2';
 
-const BUCKET = process.env.R2_BUCKET || 'memorybook';
+// 使用统一的 R2 配置
+const R2 = getR2Client();
+const BUCKET = getR2BucketName();
 
 // 视频上传记录表（用于断点续传）
 // 注意：需要在数据库中创建此表
@@ -37,13 +31,15 @@ const BUCKET = process.env.R2_BUCKET || 'memorybook';
  */
 export async function POST(request: NextRequest) {
   try {
-    const user = await getCurrentUser(request);
+    const user = getCurrentUser(request);
     if (!user) {
+      console.log('[VideoUpload] 认证失败 - 未找到有效用户');
       return NextResponse.json(
         { code: 401, message: '未授权' },
         { status: 401 }
       );
     }
+    console.log('[VideoUpload] 用户认证成功:', user.id);
 
     const formData = await request.formData();
     const action = formData.get('action') as string;
@@ -214,16 +210,29 @@ async function handleComplete(formData: FormData, userId: number) {
   const resumeKey = formData.get('resumeKey') as string;
 
   if (!uploadId || !key || !partsJson) {
+    console.log('[VideoUpload] handleComplete 缺少参数:', {
+      uploadId,
+      key,
+      partsJson
+    });
     return NextResponse.json(
       { code: 400, message: '缺少必要参数' },
       { status: 400 }
     );
   }
 
-  const parts = JSON.parse(partsJson) as Array<{
-    partNumber: number;
-    etag: string;
-  }>;
+  console.log('[VideoUpload] handleComplete partsJson:', partsJson);
+
+  let parts: Array<{ partNumber: number; etag: string }>;
+  try {
+    parts = JSON.parse(partsJson);
+  } catch (e) {
+    console.error('[VideoUpload] JSON解析失败:', e, 'partsJson:', partsJson);
+    return NextResponse.json(
+      { code: 400, message: 'parts参数格式错误' },
+      { status: 400 }
+    );
+  }
 
   const command = new CompleteMultipartUploadCommand({
     Bucket: BUCKET,

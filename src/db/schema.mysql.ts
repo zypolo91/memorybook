@@ -17,7 +17,7 @@ export const users = mysqlTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   username: varchar('username', { length: 50 }).notNull(),
   password: varchar('password', { length: 255 }).notNull(),
-  avatar: varchar('avatar', { length: 255 }).default('/avatars/default.jpg'),
+  avatar: text('avatar'),
   roleId: int('role_id').notNull(),
   isSuperAdmin: boolean('is_super_admin').default(false),
   status: varchar('status', { length: 20 }).default('active'), // active, disabled
