@@ -16,7 +16,7 @@ function generateShareCode(): string {
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getCurrentUser(request);
@@ -27,7 +27,8 @@ export async function POST(
       );
     }
 
-    const recordId = parseInt(params.id);
+    const { id } = await params;
+    const recordId = parseInt(id);
     if (isNaN(recordId)) {
       return NextResponse.json(
         { code: 400, message: '无效的记录ID' },
@@ -118,7 +119,7 @@ export async function POST(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getCurrentUser(request);
@@ -129,7 +130,8 @@ export async function DELETE(
       );
     }
 
-    const recordId = parseInt(params.id);
+    const { id } = await params;
+    const recordId = parseInt(id);
     if (isNaN(recordId)) {
       return NextResponse.json(
         { code: 400, message: '无效的记录ID' },
@@ -199,7 +201,7 @@ export async function DELETE(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getCurrentUser(request);
@@ -210,7 +212,8 @@ export async function GET(
       );
     }
 
-    const recordId = parseInt(params.id);
+    const { id } = await params;
+    const recordId = parseInt(id);
     if (isNaN(recordId)) {
       return NextResponse.json(
         { code: 400, message: '无效的记录ID' },
