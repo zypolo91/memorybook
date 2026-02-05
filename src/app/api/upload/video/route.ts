@@ -1,12 +1,17 @@
 /**
  * 视频分片上传 API
  * 支持断点续传、进度追踪
+ *
+ * 重构说明：
+ * 1. 使用数据库持久化存储上传记录，支持服务器重启后恢复
+ * 2. 详细的错误日志记录
+ * 3. 分片级别的重试支持
+ * 4. 上传进度实时更新
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import {
-  S3Client,
   CreateMultipartUploadCommand,
   UploadPartCommand,
   CompleteMultipartUploadCommand,
@@ -14,13 +19,17 @@ import {
   ListPartsCommand
 } from '@aws-sdk/client-s3';
 import { db } from '@/db';
-import { sql } from 'drizzle-orm';
+import { videoUploadRecords } from '@/db/schema';
+import { eq, and, lt, sql } from 'drizzle-orm';
 
-import { getR2Client, getR2BucketName, getR2PublicUrl } from '@/lib/r2';
+import { getR2Client, getR2BucketName } from '@/lib/r2';
 
 // 使用统一的 R2 配置
 const R2 = getR2Client();
 const BUCKET = getR2BucketName();
+
+// 分片大小常量（与前端保持一致）
+const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
 
 // 视频上传记录表（用于断点续传）
 // 注意：需要在数据库中创建此表
@@ -248,9 +257,11 @@ async function handleComplete(formData: FormData, userId: number) {
 
   const result = await R2.send(command);
 
-  // 清理上传记录
+  // 标记上传完成并清理记录
   if (resumeKey) {
-    await deleteUploadRecord(resumeKey);
+    await markUploadCompleted(resumeKey);
+    // 延迟删除，保留一段时间用于查询
+    setTimeout(() => deleteUploadRecord(resumeKey), 60000);
   }
 
   // 构建访问 URL
@@ -354,7 +365,7 @@ async function handleStatus(formData: FormData, userId: number) {
   }
 }
 
-// ========== 上传记录管理（简单的内存存储，生产环境应使用 Redis 或数据库）==========
+// ========== 上传记录管理（使用数据库持久化存储）==========
 
 interface UploadRecord {
   uploadId: string;
@@ -362,36 +373,153 @@ interface UploadRecord {
   userId: number;
   fileName: string;
   fileSize: number;
+  mimeType?: string;
+  uploadedParts?: Array<{ partNumber: number; etag: string; size?: number }>;
+  totalParts?: number;
   createdAt: Date;
 }
 
-// 使用全局变量存储上传记录（生产环境建议使用 Redis）
-const uploadRecords = new Map<string, UploadRecord>();
-
+/**
+ * 获取上传记录
+ */
 async function getUploadRecord(
   resumeKey: string
 ): Promise<UploadRecord | null> {
-  const record = uploadRecords.get(resumeKey);
-  if (!record) return null;
+  try {
+    const [record] = await db
+      .select()
+      .from(videoUploadRecords)
+      .where(eq(videoUploadRecords.resumeKey, resumeKey));
 
-  // 检查是否过期（24小时）
-  const now = new Date();
-  const diff = now.getTime() - record.createdAt.getTime();
-  if (diff > 24 * 60 * 60 * 1000) {
-    uploadRecords.delete(resumeKey);
+    if (!record) return null;
+
+    // 检查是否过期
+    if (record.expiresAt && new Date() > record.expiresAt) {
+      await deleteUploadRecord(resumeKey);
+      return null;
+    }
+
+    return {
+      uploadId: record.uploadId,
+      key: record.key,
+      userId: record.userId,
+      fileName: record.fileName,
+      fileSize: record.fileSize,
+      mimeType: record.mimeType || undefined,
+      uploadedParts: (record.uploadedParts as any) || [],
+      totalParts: record.totalParts || undefined,
+      createdAt: record.createdAt || new Date()
+    };
+  } catch (e) {
+    console.error('[VideoUpload] 获取上传记录失败:', e);
     return null;
   }
-
-  return record;
 }
 
+/**
+ * 保存上传记录
+ */
 async function saveUploadRecord(
   resumeKey: string,
   record: UploadRecord
 ): Promise<void> {
-  uploadRecords.set(resumeKey, record);
+  try {
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24小时后过期
+    const totalParts = Math.ceil(record.fileSize / CHUNK_SIZE);
+
+    await db
+      .insert(videoUploadRecords)
+      .values({
+        resumeKey,
+        uploadId: record.uploadId,
+        key: record.key,
+        userId: record.userId,
+        fileName: record.fileName,
+        fileSize: record.fileSize,
+        mimeType: record.mimeType,
+        uploadedParts: record.uploadedParts || [],
+        totalParts,
+        status: 'uploading',
+        expiresAt
+      })
+      .onConflictDoUpdate({
+        target: videoUploadRecords.resumeKey,
+        set: {
+          uploadId: record.uploadId,
+          key: record.key,
+          uploadedParts: record.uploadedParts || [],
+          updatedAt: new Date(),
+          expiresAt
+        }
+      });
+
+    console.log(`[VideoUpload] 保存上传记录成功: ${resumeKey}`);
+  } catch (e) {
+    console.error('[VideoUpload] 保存上传记录失败:', e);
+  }
 }
 
+/**
+ * 更新已上传的分片信息
+ */
+async function updateUploadedParts(
+  resumeKey: string,
+  parts: Array<{ partNumber: number; etag: string; size?: number }>
+): Promise<void> {
+  try {
+    await db
+      .update(videoUploadRecords)
+      .set({
+        uploadedParts: parts,
+        updatedAt: new Date()
+      })
+      .where(eq(videoUploadRecords.resumeKey, resumeKey));
+  } catch (e) {
+    console.error('[VideoUpload] 更新分片信息失败:', e);
+  }
+}
+
+/**
+ * 删除上传记录
+ */
 async function deleteUploadRecord(resumeKey: string): Promise<void> {
-  uploadRecords.delete(resumeKey);
+  try {
+    await db
+      .delete(videoUploadRecords)
+      .where(eq(videoUploadRecords.resumeKey, resumeKey));
+    console.log(`[VideoUpload] 删除上传记录: ${resumeKey}`);
+  } catch (e) {
+    console.error('[VideoUpload] 删除上传记录失败:', e);
+  }
+}
+
+/**
+ * 标记上传完成
+ */
+async function markUploadCompleted(resumeKey: string): Promise<void> {
+  try {
+    await db
+      .update(videoUploadRecords)
+      .set({
+        status: 'completed',
+        updatedAt: new Date()
+      })
+      .where(eq(videoUploadRecords.resumeKey, resumeKey));
+  } catch (e) {
+    console.error('[VideoUpload] 标记完成失败:', e);
+  }
+}
+
+/**
+ * 清理过期的上传记录
+ */
+async function cleanupExpiredRecords(): Promise<void> {
+  try {
+    const now = new Date();
+    await db
+      .delete(videoUploadRecords)
+      .where(lt(videoUploadRecords.expiresAt, now));
+  } catch (e) {
+    console.error('[VideoUpload] 清理过期记录失败:', e);
+  }
 }

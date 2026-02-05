@@ -74,6 +74,10 @@ export const exerciseVideos = memorybookSchema.exerciseVideos;
 export const healthScores = memorybookSchema.healthScores;
 export const recipes = memorybookSchema.recipes;
 
+// 视频上传和分享相关
+export const videoUploadRecords = memorybookSchema.videoUploadRecords;
+export const shareLinks = memorybookSchema.shareLinks;
+
 // MemoryBook 关系
 export const memoriesRelations = memorybookSchema.memoriesRelations;
 export const memoryMediaRelations = memorybookSchema.memoryMediaRelations;

@@ -6,23 +6,24 @@ import { getCurrentUser } from '@/lib/auth';
 
 /**
  * GET /api/albums - 获取相册列表
+ * 【安全】强制验证用户身份，只能查看自己的相册
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
+    // 【安全修复】强制验证用户身份
+    const user = getCurrentUser(request);
+    if (!user) {
       return NextResponse.json(
-        { code: -1, message: '缺少用户ID' },
-        { status: 400 }
+        { code: 401, message: '未授权，请先登录' },
+        { status: 401 }
       );
     }
 
+    // 【安全修复】忽略传入的userId参数，强制使用当前登录用户ID
     const albumList = await db
       .select()
       .from(albums)
-      .where(eq(albums.userId, parseInt(userId)))
+      .where(eq(albums.userId, user.id))
       .orderBy(desc(albums.isDefault), albums.sortOrder);
 
     return NextResponse.json({

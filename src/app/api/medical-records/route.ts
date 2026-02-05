@@ -11,8 +11,12 @@ import {
   medicalTags,
   medicalRecordTags
 } from '@/db/schema';
-import { eq, desc, and, sql, isNull } from 'drizzle-orm';
+import { eq, desc, and, sql, inArray } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
+import {
+  getFamilyAccessibleUserIds,
+  getAccessiblePatientIds
+} from '@/lib/data-access';
 
 // GET - 获取病例记录列表
 export async function GET(request: NextRequest) {
@@ -34,13 +38,34 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * pageSize;
 
-    // 构建查询条件
-    const conditions: any[] = [eq(medicalRecords.status, 'active')];
+    // 病例记录权限规则：
+    // 1. 只有家属圈成员才能查看病例记录
+    // 2. 病例记录关联到患者，患者属于家属圈
+    // 3. 用户必须是该家属圈的成员才能查看
 
+    // 获取用户可访问的所有家属圈成员的用户ID
+    const accessibleUserIds = await getFamilyAccessibleUserIds(user.id);
+
+    // 获取用户可访问的所有患者ID
+    const accessiblePatientIds = await getAccessiblePatientIds(user.id);
+
+    // 构建查询条件
+    const conditions: any[] = [
+      eq(medicalRecords.status, 'active'),
+      // 只查询家属圈成员创建的病例记录
+      inArray(medicalRecords.userId, accessibleUserIds)
+    ];
+
+    // 如果指定了patientId，验证权限后额外过滤
     if (patientId) {
-      conditions.push(eq(medicalRecords.patientId, parseInt(patientId)));
-    } else {
-      conditions.push(eq(medicalRecords.userId, user.id));
+      const pid = parseInt(patientId);
+      if (!accessiblePatientIds.includes(pid)) {
+        return NextResponse.json(
+          { code: 403, message: '无权访问该患者的病例' },
+          { status: 403 }
+        );
+      }
+      conditions.push(eq(medicalRecords.patientId, pid));
     }
 
     if (categoryId) {

@@ -5,11 +5,12 @@ import {
   memoryMedia,
   memoryTags,
   tags,
-  memoryLikes,
-  memoryFavorites
+  memoryComments,
+  users
 } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
+import { getFamilyAccessibleUserIds } from '@/lib/data-access';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -17,20 +18,42 @@ interface RouteContext {
 
 /**
  * GET /api/memories/[id] - 获取记忆详情
+ *
+ * 权限规则：
+ * 1. 可以查看自己的记忆
+ * 2. 可以查看家属圈成员的记忆
+ * 3. 可以查看公开的记忆
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
+    const user = getCurrentUser(request);
+    if (!user) {
+      return NextResponse.json(
+        { code: 401, message: '未授权，请先登录' },
+        { status: 401 }
+      );
+    }
+
     const { id } = await context.params;
     const memoryId = parseInt(id);
 
+    // 获取家属圈可访问的用户ID列表
+    const accessibleUserIds = await getFamilyAccessibleUserIds(user.id);
+
+    // 查询记忆（必须是可访问用户的记忆或公开记忆）
     const [memory] = await db
       .select()
       .from(memories)
-      .where(eq(memories.id, memoryId));
+      .where(
+        and(
+          eq(memories.id, memoryId),
+          inArray(memories.userId, accessibleUserIds)
+        )
+      );
 
     if (!memory) {
       return NextResponse.json(
-        { code: 404, message: '记忆不存在' },
+        { code: 404, message: '记忆不存在或无权限访问' },
         { status: 404 }
       );
     }

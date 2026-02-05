@@ -1317,3 +1317,70 @@ export const healthScoresRelations = relations(healthScores, ({ one }) => ({
     references: [patients.id]
   })
 }));
+
+// ========================================
+// 视频上传记录表（用于断点续传）
+// ========================================
+
+/**
+ * 视频上传记录表
+ * 用于持久化存储分片上传状态，支持断点续传
+ */
+export const videoUploadRecords = pgTable(
+  'video_upload_records',
+  {
+    id: serial('id').primaryKey(),
+    resumeKey: varchar('resume_key', { length: 255 }).notNull().unique(),
+    uploadId: varchar('upload_id', { length: 500 }).notNull(),
+    key: varchar('key', { length: 1000 }).notNull(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    fileName: text('file_name').notNull(),
+    fileSize: integer('file_size').notNull(),
+    mimeType: varchar('mime_type', { length: 100 }),
+    uploadedParts: jsonb('uploaded_parts').default([]), // 已上传的分片信息
+    totalParts: integer('total_parts'),
+    status: varchar('status', { length: 20 }).default('uploading'), // uploading, completed, failed, expired
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+    expiresAt: timestamp('expires_at') // 过期时间，默认24小时后
+  },
+  (table) => ({
+    resumeKeyIdx: index('video_upload_resume_key_idx').on(table.resumeKey),
+    userIdIdx: index('video_upload_user_id_idx').on(table.userId),
+    statusIdx: index('video_upload_status_idx').on(table.status)
+  })
+);
+
+// ========================================
+// 分享链接表（用于病例记录分享）
+// ========================================
+
+/**
+ * 分享链接表
+ * 用于生成临时分享链接，支持病例记录等私有数据的分享
+ */
+export const shareLinks = pgTable(
+  'share_links',
+  {
+    id: serial('id').primaryKey(),
+    code: varchar('code', { length: 32 }).notNull().unique(), // 分享码
+    resourceType: varchar('resource_type', { length: 50 }).notNull(), // medical_record, memory, album
+    resourceId: integer('resource_id').notNull(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    password: varchar('password', { length: 100 }), // 可选密码
+    viewCount: integer('view_count').default(0),
+    maxViews: integer('max_views'), // 最大查看次数，null表示无限制
+    expiresAt: timestamp('expires_at'), // 过期时间，null表示永不过期
+    isActive: boolean('is_active').default(true),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    codeIdx: index('share_links_code_idx').on(table.code),
+    userIdIdx: index('share_links_user_id_idx').on(table.userId)
+  })
+);
