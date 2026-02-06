@@ -18,6 +18,7 @@ import {
   AbortMultipartUploadCommand,
   ListPartsCommand
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '@/db';
 import { videoUploadRecords } from '@/db/schema';
 import { eq, and, lt, sql } from 'drizzle-orm';
@@ -56,6 +57,8 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case 'init':
         return handleInit(formData, user.id);
+      case 'getUploadUrls':
+        return handleGetUploadUrls(formData, user.id);
       case 'uploadPart':
         return handleUploadPart(formData, user.id);
       case 'complete':
@@ -172,6 +175,46 @@ async function handleInit(formData: FormData, userId: number) {
 }
 
 /**
+ * 生成分片上传预签名URL（客户端直传R2，绕过Vercel 4.5MB限制）
+ */
+async function handleGetUploadUrls(formData: FormData, userId: number) {
+  const uploadId = formData.get('uploadId') as string;
+  const key = formData.get('key') as string;
+  const totalParts = parseInt(formData.get('totalParts') as string);
+
+  if (!uploadId || !key || !totalParts) {
+    return NextResponse.json(
+      { code: 400, message: '缺少必要参数' },
+      { status: 400 }
+    );
+  }
+
+  console.log(
+    `[VideoUpload] 生成预签名URL: key=${key}, totalParts=${totalParts}`
+  );
+
+  const urls: Array<{ partNumber: number; url: string }> = [];
+
+  for (let i = 1; i <= totalParts; i++) {
+    const command = new UploadPartCommand({
+      Bucket: BUCKET,
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: i
+    });
+
+    const url = await getSignedUrl(R2, command, { expiresIn: 3600 });
+    urls.push({ partNumber: i, url });
+  }
+
+  return NextResponse.json({
+    code: 0,
+    message: '预签名URL生成成功',
+    data: { urls }
+  });
+}
+
+/**
  * 上传单个分片
  */
 async function handleUploadPart(formData: FormData, userId: number) {
@@ -243,6 +286,11 @@ async function handleComplete(formData: FormData, userId: number) {
     );
   }
 
+  console.log(
+    '[VideoUpload] handleComplete parts:',
+    JSON.stringify(parts, null, 2)
+  );
+
   const command = new CompleteMultipartUploadCommand({
     Bucket: BUCKET,
     Key: key,
@@ -255,7 +303,16 @@ async function handleComplete(formData: FormData, userId: number) {
     }
   });
 
-  const result = await R2.send(command);
+  let result;
+  try {
+    result = await R2.send(command);
+  } catch (e: any) {
+    console.error('[VideoUpload] CompleteMultipartUpload 失败:', e.message, e);
+    return NextResponse.json(
+      { code: 500, message: `完成上传失败: ${e.message}` },
+      { status: 500 }
+    );
+  }
 
   // 标记上传完成并清理记录
   if (resumeKey) {
