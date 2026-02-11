@@ -79,6 +79,7 @@ export const memoryMedia = pgTable(
     height: integer('height'),
     duration: integer('duration'), // 视频/音频时长(秒)
     sortOrder: integer('sort_order').default(0),
+    editParams: jsonb('edit_params'), // 媒体编辑参数(滤镜/裁剪/速度等)
     createdAt: timestamp('created_at').defaultNow()
   },
   (table) => ({
