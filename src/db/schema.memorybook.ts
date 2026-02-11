@@ -1295,3 +1295,64 @@ export const healthScoresRelations = relations(healthScores, ({ one }) => ({
     references: [patients.id]
   })
 }));
+
+// ========================================
+// 视频上传和分享相关
+// ========================================
+
+/**
+ * 视频分片上传记录表 - 支持断点续传
+ */
+export const videoUploadRecords = pgTable(
+  'video_upload_records',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    uploadId: varchar('upload_id', { length: 255 }).notNull(), // S3/R2 multipart upload ID
+    objectKey: varchar('object_key', { length: 500 }).notNull(), // 存储路径
+    fileName: varchar('file_name', { length: 255 }),
+    fileSize: integer('file_size'), // 文件总大小(bytes)
+    mimeType: varchar('mime_type', { length: 100 }),
+    totalParts: integer('total_parts'), // 总分片数
+    uploadedParts: integer('uploaded_parts').default(0), // 已上传分片数
+    status: varchar('status', { length: 20 }).default('pending'), // pending, uploading, completed, failed, aborted
+    completedUrl: text('completed_url'), // 上传完成后的访问URL
+    metadata: jsonb('metadata'), // 额外元数据(视频时长、分辨率等)
+    expiresAt: timestamp('expires_at'), // 上传过期时间
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow()
+  },
+  (table) => ({
+    userIdIdx: index('video_upload_user_id_idx').on(table.userId),
+    uploadIdIdx: index('video_upload_upload_id_idx').on(table.uploadId),
+    statusIdx: index('video_upload_status_idx').on(table.status)
+  })
+);
+
+/**
+ * 分享链接表 - 生成分享链接
+ */
+export const shareLinks = pgTable(
+  'share_links',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    targetType: varchar('target_type', { length: 50 }).notNull(), // memory, album, medical_record
+    targetId: integer('target_id').notNull(), // 目标记录ID
+    code: varchar('code', { length: 64 }).notNull().unique(), // 分享码
+    password: varchar('password', { length: 20 }), // 访问密码(可选)
+    maxViews: integer('max_views'), // 最大查看次数(null=无限)
+    viewCount: integer('view_count').default(0),
+    expiresAt: timestamp('expires_at'), // 过期时间(null=永不过期)
+    isActive: boolean('is_active').default(true),
+    createdAt: timestamp('created_at').defaultNow()
+  },
+  (table) => ({
+    codeIdx: index('share_links_code_idx').on(table.code),
+    userIdIdx: index('share_links_user_id_idx').on(table.userId)
+  })
+);
