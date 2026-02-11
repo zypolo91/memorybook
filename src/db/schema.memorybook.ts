@@ -615,6 +615,8 @@ export const medicalRecords = pgTable(
     notes: text('notes'), // 备注
     aiAnalysis: jsonb('ai_analysis'), // AI分析结果
     isImportant: boolean('is_important').default(false), // 是否重要
+    isShared: boolean('is_shared').default(false), // 是否已分享
+    sharedAt: timestamp('shared_at'), // 分享时间
     status: varchar('status', { length: 20 }).default('active'), // active, archived
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow()
@@ -1307,26 +1309,25 @@ export const videoUploadRecords = pgTable(
   'video_upload_records',
   {
     id: serial('id').primaryKey(),
+    resumeKey: varchar('resume_key', { length: 255 }).notNull().unique(), // 断点续传标识
+    uploadId: varchar('upload_id', { length: 255 }).notNull(), // S3/R2 multipart upload ID
+    key: varchar('key', { length: 500 }).notNull(), // R2存储路径
     userId: integer('user_id')
       .notNull()
       .references(() => users.id),
-    uploadId: varchar('upload_id', { length: 255 }).notNull(), // S3/R2 multipart upload ID
-    objectKey: varchar('object_key', { length: 500 }).notNull(), // 存储路径
-    fileName: varchar('file_name', { length: 255 }),
-    fileSize: integer('file_size'), // 文件总大小(bytes)
+    fileName: varchar('file_name', { length: 255 }).notNull(),
+    fileSize: integer('file_size').notNull(), // 文件总大小(bytes)
     mimeType: varchar('mime_type', { length: 100 }),
     totalParts: integer('total_parts'), // 总分片数
-    uploadedParts: integer('uploaded_parts').default(0), // 已上传分片数
-    status: varchar('status', { length: 20 }).default('pending'), // pending, uploading, completed, failed, aborted
-    completedUrl: text('completed_url'), // 上传完成后的访问URL
-    metadata: jsonb('metadata'), // 额外元数据(视频时长、分辨率等)
-    expiresAt: timestamp('expires_at'), // 上传过期时间
+    uploadedParts: jsonb('uploaded_parts').default([]), // 已上传分片信息 [{partNumber, etag, size}]
+    status: varchar('status', { length: 20 }).default('uploading'), // uploading, completed, failed, aborted
+    expiresAt: timestamp('expires_at'), // 上传过期时间(24h)
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow()
   },
   (table) => ({
+    resumeKeyIdx: index('video_upload_resume_key_idx').on(table.resumeKey),
     userIdIdx: index('video_upload_user_id_idx').on(table.userId),
-    uploadIdIdx: index('video_upload_upload_id_idx').on(table.uploadId),
     statusIdx: index('video_upload_status_idx').on(table.status)
   })
 );
@@ -1341,8 +1342,8 @@ export const shareLinks = pgTable(
     userId: integer('user_id')
       .notNull()
       .references(() => users.id),
-    targetType: varchar('target_type', { length: 50 }).notNull(), // memory, album, medical_record
-    targetId: integer('target_id').notNull(), // 目标记录ID
+    resourceType: varchar('resource_type', { length: 50 }).notNull(), // memory, album, medical_record
+    resourceId: integer('resource_id').notNull(), // 目标记录ID
     code: varchar('code', { length: 64 }).notNull().unique(), // 分享码
     password: varchar('password', { length: 20 }), // 访问密码(可选)
     maxViews: integer('max_views'), // 最大查看次数(null=无限)
