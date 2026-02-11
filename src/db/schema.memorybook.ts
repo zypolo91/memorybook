@@ -38,7 +38,13 @@ export const memories = pgTable(
     location: varchar('location', { length: 200 }), // 地点
     mood: varchar('mood', { length: 50 }), // 心情标签
     isPublic: boolean('is_public').default(false), // 是否公开
-    layoutType: varchar('layout_type', { length: 50 }), // 排版类型: classic, magazine, polaroid, scrapbook, minimal, story, grid, timeline
+    visibility: varchar('visibility', { length: 20 }).default('public'), // public, private, family
+    scheduledTime: timestamp('scheduled_time'), // 定时发布时间
+    allowComments: boolean('allow_comments').default(true), // 允许评论
+    isOriginal: boolean('is_original').default(false), // 原创声明
+    coverUrl: text('cover_url'), // 封面图URL
+    coverText: varchar('cover_text', { length: 200 }), // 封面文字
+    layoutType: varchar('layout_type', { length: 50 }), // 排版类型
     viewCount: integer('view_count').default(0),
     likeCount: integer('like_count').default(0),
     commentCount: integer('comment_count').default(0),
@@ -73,34 +79,6 @@ export const memoryMedia = pgTable(
     height: integer('height'),
     duration: integer('duration'), // 视频/音频时长(秒)
     sortOrder: integer('sort_order').default(0),
-    // === 视频/图片编辑参数 ===
-    editParams: jsonb('edit_params'), // 编辑参数JSON，结构见下方注释
-    /*
-     * editParams 结构:
-     * {
-     *   // 滤镜
-     *   filterIndex: number,      // 滤镜索引 (0=原片)
-     *   filterIntensity: number,  // 滤镜强度 (0-1)
-     *
-     *   // 调整
-     *   brightness: number,       // 亮度 (-1 到 1, 0=原始)
-     *   contrast: number,         // 对比度 (0 到 2, 1=原始)
-     *   saturation: number,       // 饱和度 (0 到 2, 1=原始)
-     *
-     *   // 裁剪
-     *   trimStart: number,        // 裁剪开始 (0-1)
-     *   trimEnd: number,          // 裁剪结束 (0-1)
-     *
-     *   // 速度
-     *   playbackSpeed: number,    // 播放速度 (0.25-4)
-     *
-     *   // 音量
-     *   volume: number,           // 音量 (0-1)
-     *
-     *   // 动效
-     *   effectIndex: number,      // 动效索引 (0=无)
-     * }
-     */
     createdAt: timestamp('created_at').defaultNow()
   },
   (table) => ({
@@ -1317,70 +1295,3 @@ export const healthScoresRelations = relations(healthScores, ({ one }) => ({
     references: [patients.id]
   })
 }));
-
-// ========================================
-// 视频上传记录表（用于断点续传）
-// ========================================
-
-/**
- * 视频上传记录表
- * 用于持久化存储分片上传状态，支持断点续传
- */
-export const videoUploadRecords = pgTable(
-  'video_upload_records',
-  {
-    id: serial('id').primaryKey(),
-    resumeKey: varchar('resume_key', { length: 255 }).notNull().unique(),
-    uploadId: varchar('upload_id', { length: 500 }).notNull(),
-    key: varchar('key', { length: 1000 }).notNull(),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id),
-    fileName: text('file_name').notNull(),
-    fileSize: integer('file_size').notNull(),
-    mimeType: varchar('mime_type', { length: 100 }),
-    uploadedParts: jsonb('uploaded_parts').default([]), // 已上传的分片信息
-    totalParts: integer('total_parts'),
-    status: varchar('status', { length: 20 }).default('uploading'), // uploading, completed, failed, expired
-    errorMessage: text('error_message'),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
-    expiresAt: timestamp('expires_at') // 过期时间，默认24小时后
-  },
-  (table) => ({
-    resumeKeyIdx: index('video_upload_resume_key_idx').on(table.resumeKey),
-    userIdIdx: index('video_upload_user_id_idx').on(table.userId),
-    statusIdx: index('video_upload_status_idx').on(table.status)
-  })
-);
-
-// ========================================
-// 分享链接表（用于病例记录分享）
-// ========================================
-
-/**
- * 分享链接表
- * 用于生成临时分享链接，支持病例记录等私有数据的分享
- */
-export const shareLinks = pgTable(
-  'share_links',
-  {
-    id: serial('id').primaryKey(),
-    code: varchar('code', { length: 32 }).notNull().unique(), // 分享码
-    resourceType: varchar('resource_type', { length: 50 }).notNull(), // medical_record, memory, album
-    resourceId: integer('resource_id').notNull(),
-    userId: integer('user_id')
-      .notNull()
-      .references(() => users.id),
-    password: varchar('password', { length: 100 }), // 可选密码
-    viewCount: integer('view_count').default(0),
-    maxViews: integer('max_views'), // 最大查看次数，null表示无限制
-    expiresAt: timestamp('expires_at'), // 过期时间，null表示永不过期
-    isActive: boolean('is_active').default(true),
-    createdAt: timestamp('created_at').defaultNow()
-  },
-  (table) => ({
-    codeIdx: index('share_links_code_idx').on(table.code),
-    userIdIdx: index('share_links_user_id_idx').on(table.userId)
-  })
-);

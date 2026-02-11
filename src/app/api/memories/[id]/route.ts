@@ -134,6 +134,12 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       location,
       mood,
       isPublic,
+      visibility,
+      scheduledTime,
+      allowComments,
+      isOriginal,
+      coverUrl,
+      coverText,
       layoutType,
       mediaList,
       tagIds
@@ -151,6 +157,18 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         location: location ?? existingMemory.location,
         mood: mood ?? existingMemory.mood,
         isPublic: isPublic ?? existingMemory.isPublic,
+        visibility: visibility ?? existingMemory.visibility,
+        scheduledTime:
+          scheduledTime !== undefined
+            ? scheduledTime
+              ? new Date(scheduledTime)
+              : null
+            : existingMemory.scheduledTime,
+        allowComments: allowComments ?? existingMemory.allowComments,
+        isOriginal: isOriginal ?? existingMemory.isOriginal,
+        coverUrl: coverUrl !== undefined ? coverUrl : existingMemory.coverUrl,
+        coverText:
+          coverText !== undefined ? coverText : existingMemory.coverText,
         layoutType: layoutType ?? existingMemory.layoutType,
         updatedAt: new Date()
       })

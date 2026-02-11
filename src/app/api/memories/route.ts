@@ -134,6 +134,12 @@ export async function POST(request: NextRequest) {
       location,
       mood,
       isPublic = false,
+      visibility = 'public',
+      scheduledTime,
+      allowComments = true,
+      isOriginal = false,
+      coverUrl,
+      coverText,
       layoutType,
       mediaList = [],
       tagIds = [],
@@ -193,6 +199,12 @@ export async function POST(request: NextRequest) {
         location,
         mood,
         isPublic,
+        visibility,
+        scheduledTime: scheduledTime ? new Date(scheduledTime) : null,
+        allowComments,
+        isOriginal,
+        coverUrl: coverUrl || null,
+        coverText: coverText || null,
         layoutType
       })
       .returning();
